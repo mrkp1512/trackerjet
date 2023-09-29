@@ -1,0 +1,311 @@
+      def get_queryset(self, request):
+          qs = super().get_queryset(request)
+            Customize the queryset if needed, e.g., filtering or ordering
+          return qs
+
+      def get_urls(self):
+          urls = super().get_urls()
+          custom_urls = [
+              path('course_edit/<int:student_pk>/', self.admin_site.admin_view(self.course_edit_view),
+                   name='students_course_edit'),
+              path('course_edit_view/<int:student_pk>/', self.admin_site.admin_view(self.course_edit_view),
+                   name='students_course_edit_view'),
+              path('view_fees/<int:student_pk>/', self.admin_site.admin_view(self.view_fees_view),
+                   name='students_view_fees'),
+          ]
+          return custom_urls + urls
+
+      def course_edit_view(self, request, student_pk):
+          student = get_object_or_404(Student, pk=student_pk)
+
+          if request.method == 'POST':
+              form = CourseEditForm(request.POST, instance=student)
+              if form.is_valid():
+                  form.save()
+                  messages.success(request, 'Course saved successfully.')
+                  return HttpResponseRedirect(reverse('admin:students_student_change_view', args=[student_pk]))
+          else:
+              form = CourseEditForm(instance=student)
+
+            app1_list = site.get_app_list(request)
+          context = {
+              'form': form,
+              'student': student,
+            
+          }
+          return render(request, 'students/course_edit.html', context)
+
+      def course_edit(self, obj):
+          student = obj
+          if student.course:
+              url = reverse('admin:students_course_edit_view', args=[student.id])
+              return format_html('<a href="{}">Edit</a>', url)
+          else:
+              return 'No course'
+
+      course_edit.short_description = 'Edit Course'
+
+
+"applist"
+{% load i18n admin_urls %}
+
+{% for app in app1_list %}
+    <div class="app-{{ app.app_label }} module">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col" class="column-name">{% trans 'Model' %}</th>
+                    <th scope="col" class="column-description">{% trans 'Description' %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for model in app.models %}
+                    <tr class="model-{{ model.object_name|lower }}">
+                        <th scope="row" class="column-name">
+                            <a href="{{ model.admin_url }}" class="changelink">{% trans model.name %}</a>
+                        </th>
+                        <td class="column-description">{{ model.opts.verbose_name_plural|capfirst }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endfor %}
+
+
+
+fessview:
+    def view_fees_view(self, request, student_pk):
+        student = get_object_or_404(Student, id=student_pk)
+        feedetails = Student.feedetails(student_pk)
+        payment_link = reverse('admin:fees_link', args=[student_pk])
+
+        context = {
+            'feedetails' : feedetails,
+            'payment_link': payment_link,
+            'student' : student,
+        }
+
+        return render(request, 'admin/fees_payment.html', context)
+
+course_edit_view:
+    def edit_course_view(self, request, student_pk):
+        student = get_object_or_404(Student, id=student_pk)
+        course = Student.objects.get(pk=student_pk)
+
+        if request.method == 'POST':
+            form = CourseEditForm(request.POST, instance=student)
+            if form.is_valid():
+                form.save()
+                # Redirect to the student's change page or any other desired page
+                return redirect('admin:edit_course', student_pk)
+        else:
+            form = CourseEditForm(instance=student)
+
+            context = {
+            'form': form,
+            'student': student,
+            'course' : course,
+             'opts': Student._meta
+        }
+        return render(request, 'admin/course_edit.html', context)
+
+    
+    # def get_urls(self):
+    #     urls = super().get_urls()
+    #     custom_urls = [
+    #         path('edit_course/<int:student_pk>/', self.edit_course_view, name='edit_course'),
+    #         # path('fees_link/<int:student_pk>/', self.view_fees_view, name='fees_link'),
+    #     ]
+    #     return custom_urls + urls
+
+        def get_formset(self, request, obj=None, **kwargs):
+        # Override get_formset to set the formset ordering
+        formset_class = super().get_formset(request, obj, **kwargs)
+        if obj is not None:
+            # Move the inline to the first position
+            formset_class.form.base_fields = OrderedDict(
+                (k, formset_class.form.base_fields[k])
+                for k in formset_class.form.base_fields
+            )
+        return formset_class
+# class CourseAdmin(admin.ModelAdmin):
+#     list_display = ('name',)
+
+#     def changelist_view(self, request: HttpRequest, extra_context=None):
+#         self.model = Student
+#         self.list_display = ('student', 'gender',)
+#         response = super().changelist_view(request, extra_context=extra_context)
+
+#         queryset = response.context_data['cl'].queryset
+#         queryset != Course.objects.all()
+#         queryset = queryset.order_by('name')
+#         response.context_data['cl'].queryset = queryset
+#         return response
+
+
+
+class CourseAdmin(admin.ModelAdmin):
+    list_display = ('name',)
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        # Get the Course instance
+        course = self.get_object(request, object_id)
+
+        # If the Course instance exists
+        if course is not None:
+            # Get the related Student instance
+            student = Student.objects.all()
+
+            # If the Student instance exists
+            if student is not None:
+                # Redirect to the Student admin edit page with the corresponding Student ID
+                student_instance = student.first()
+                student_change_url = reverse('admin:students_student,course_change', args = [student_instance.id])
+                return HttpResponseRedirect(student_change_url)
+
+        # Fall back to the default Course admin edit page
+        return super().change_view(request, object_id, form_url=form_url, extra_context=extra_context)
+
+ to instance:
+     def get_formsets_with_inlines(self, request, obj=None):
+        for inline in self.get_inline_instances(request, obj):
+            if isinstance(inline, StudentInline):
+                yield inline.get_formset(request, obj), inline
+
+        for inline in self.get_inline_instances(request, obj):
+            if not isinstance(inline, StudentInline):
+                yield inline.get_formset(request, obj), inline
+
+    def get_inline_instances(self, request, obj=None):
+        inline_instances = super().get_inline_instances(request, obj)
+        if obj is None:
+            return inline_instances
+
+        return [x for x in inline_instances if isinstance(x, StudentInline)] + [x for x in inline_instances if not isinstance(x, StudentInline)]
+
+
+
+# class CourseAdmin(admin.ModelAdmin):
+#     list_display = ('name',)
+
+#     def changeform_view(self, request, object_id=None, form_url='', extra_context=None):
+#         if object_id:
+#             course_obj = self.get_object(request, object_id)
+#             student_obj = Student.objects.filter(course=course_obj)
+#             if student_obj:
+#                 self.inlines = [StudentInline]  # Assuming you have defined the StudentInline class
+#         return super().changeform_view(request, object_id=object_id, form_url=form_url, extra_context=extra_context)
+    
+
+# class CourseAdmin(admin.ModelAdmin):
+#     inlines = [StudentInline]
+#     fields = None
+#     list_display = ('name', 'display_trainer',)
+#     list_filter = ('trainer',)
+#     filter_horizontal = ('trainer',)
+#     ordering = ['coursecode',]
+   
+
+#     def display_trainer(self, obj):
+#         return ", ".join([str(trainer) for trainer in obj.trainer.all()])
+
+#     display_trainer.short_description = 'Team Member'
+
+#     # display_course_fees.short_description = 'Course Fee'
+
+
+
+
+
+
+display fees and course:
+    def edit_course(self, obj):
+        try:
+            url = f"/admin/settings/course/{obj.course.id}/change"
+            # url = f"/admin/settings/course/{obj.course.id}"
+            link = f'<a href="{url}">Go</a>'
+            return format_html(link)
+        except NoReverseMatch:
+            return None
+
+    edit_course.short_description = 'Edit Course'
+    def __str__(self):
+        student_info = ', '.join(student.student for student in self.student_set.all())
+        return f" Edit the Course  {self.name} of Student  {student_info}"
+
+
+    def fees_link(self, obj):
+        try:
+            url = f"/admin/settings/feedetails/?student__name={obj.student}"
+            link = f'<a href="{url}">Go</a>'
+            return format_html(link)
+        except NoReverseMatch:
+            return None
+
+    fees_link.short_description = 'Fees'
+
+
+
+    Save Model
+        def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+
+        if change:
+            if obj.is_registered:
+                fees_type = obj.fees_type
+                print("Is Registered:", obj.is_registered)
+                print("Fees Type:", fees_type)
+                print("Type of fees_type:", type(fees_type))
+                
+                if fees_type.fees_type == 'one_times':
+                    print("Generating one-time fees")
+                    self.create_student_fees(obj, 1)
+                elif fees_type.fees_type == 'two_times':
+                    print("Generating two-times fees")
+                    self.create_student_fees(obj, 2)
+                elif fees_type.fees_type == 'three_times':
+                    print("Generating three-times fees")
+                    self.create_student_fees(obj, 3)
+                elif fees_type.fees_type == 'Registration':
+                    print("Generating Registration fees")
+                    self.create_student_fees(obj, 1)
+                else:
+                    # Handle other fees types here
+                    pass
+
+    def create_student_fees(self, student, installment_count):
+        course_fees = Course_fees.objects.get(fees_type=student.fees_type)
+        print(course_fees)
+        total_amount = course_fees.amount
+        print(total_amount)
+
+   
+        # elif installment_count == 2:
+        #     installment_amount = total_amount / 2
+        # elif installment_count == 3:
+        #     installment_amount = total_amount / 3
+        # else:
+        #     # Handle other installment counts here
+        #     pass
+
+        # print(installment_amounts)
+        if installment_count == 1:
+            installment_amounts = total_amount
+        elif installment_count == 2:
+            installment_amounts = [15000, 15000]
+        elif installment_count == 3:
+            installment_amounts = [10000, 12500, 12500]
+        else:
+            installment_amounts *= installment_count
+        balance_amount = float(total_amount)
+        for i in range(installment_count):
+            fee = StudentFees()
+            fee.student = student
+            fee.InstallmentDate = student.joining_date + timedelta(days=30 * (i + 1))
+            fee.InstallmentAmount = float(installment_amounts[i])
+            print("The installment amounts are", fee.InstallmentAmount)
+            fee.BalanceAmount = float(total_amount) - float(installment_amounts[i]) 
+            print("The balance amounts are", fee.BalanceAmount)
+            balance_amount -= float(installment_amounts[i])
+            fee.save()
